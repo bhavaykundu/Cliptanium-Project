@@ -2,14 +2,20 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { createSubmission } from '@/lib/api/submissions'; // <-- Clean API wrapper import kiya
 
 export default function CampaignCommandDeck() {
-  const [platform, setPlatform] = useState('TikTok');
+  const params = useParams();
+  const campaignId = params.id as string;
+
+  const [platform, setPlatform] = useState('tiktok');
   const [url, setUrl] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isNameHidden, setIsNameHidden] = useState(false);
 
-  // Mock campaign data jisme requirements text ke andar drive link included hai
   const campaignData = {
     title: "Cliptanium Apparel Launch",
     payout: "$15 / 1K Views",
@@ -17,18 +23,51 @@ export default function CampaignCommandDeck() {
     requirements: `01. Download high-resolution source clips from official drive: https://drive.google.com/drive/folders/example-clips-123\n02. Minimum edit length must be 15 seconds. No vertical framing black bars.\n03. Maintain a positive promotional narrative toward the Cliptanium brand.\n04. Tag official audio track on all published TikTok & IG posts.`
   };
 
-  // Helper function to automatically extract http/https link from requirements text
   const extractDriveLink = (text: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const matches = text.match(urlRegex);
-    return matches ? matches[0] : 'https://drive.google.com'; // Default fallback if no link found
+    return matches ? matches[0] : 'https://drive.google.com';
   };
 
   const dynamicDriveLink = extractDriveLink(campaignData.requirements);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const parseErrorMessage = (err: any) => {
+    if (!err) return 'An unknown error occurred';
+    if (typeof err === 'string') return err;
+    const detail = err.data?.detail || err.message;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+      return detail.map((d: any) => {
+        const fieldPath = d.loc ? d.loc.join(' → ') : 'Field';
+        return `${fieldPath}: ${d.msg}`;
+      }).join(' | ');
+    }
+    if (typeof detail === 'object') {
+      return JSON.stringify(detail);
+    }
+    return 'Failed to process request';
+  };
+
+  // CLEAN SUBMISSION HANDLER (Dev 3 Contract Compliant)
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    setLoading(true);
+    setError(null);
+
+    try {
+      await createSubmission({
+        campaignId: campaignId,
+        clipUrl: url,
+        platform: platform,
+      });
+
+      setSubmitted(true);
+    } catch (err: any) {
+      const errorMsg = parseErrorMessage(err);
+      setError(errorMsg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const leaderboard = [
@@ -46,7 +85,6 @@ export default function CampaignCommandDeck() {
   return (
     <div className="p-8 bg-zinc-950 min-h-screen text-white">
       
-      {/* Top Navigation & Mission ID */}
       <div className="flex justify-between items-center mb-8 border-b border-zinc-900 pb-6">
         <div>
           <Link href="/campaigns" className="text-xs text-zinc-500 hover:text-white transition font-mono mb-2 inline-block">
@@ -68,13 +106,10 @@ export default function CampaignCommandDeck() {
         </div>
       </div>
 
-      {/* Asymmetrical Command Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* LEFT PANEL: Mission Briefing & Submission Terminal (7 Cols) */}
         <div className="lg:col-span-7 space-y-6">
           
-          {/* Briefing Directive Card */}
           <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-3xl p-6 backdrop-blur-xl shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 rounded-full blur-2xl pointer-events-none"></div>
             
@@ -82,7 +117,6 @@ export default function CampaignCommandDeck() {
               <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-400 font-mono">
                 📋 Mission Briefing & Guidelines
               </h2>
-              {/* Dynamic Link Button extracted automatically from text */}
               <a 
                 href={dynamicDriveLink} 
                 target="_blank" 
@@ -98,11 +132,16 @@ export default function CampaignCommandDeck() {
             </div>
           </div>
 
-          {/* Execution Deck: Submission Terminal */}
           <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-3xl p-6 backdrop-blur-xl shadow-2xl">
             <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-400 font-mono mb-4">
               🚀 Execution Terminal (Submit Reel)
             </h2>
+
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded-xl text-xs mb-4 font-mono">
+                Error: {error}
+              </div>
+            )}
 
             {submitted ? (
               <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-6 text-center">
@@ -121,8 +160,10 @@ export default function CampaignCommandDeck() {
                     value={platform} onChange={(e) => setPlatform(e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-xs font-mono text-white focus:outline-none focus:border-rose-500 transition"
                   >
-                    <option value="TikTok">TikTok</option>
-                    <option value="Instagram Reels">Instagram Reels</option>
+                    <option value="tiktok">TikTok</option>
+                    <option value="instagram_reels">Instagram Reels</option>
+                    <option value="youtube_shorts">YouTube Shorts</option>
+                    <option value="other">Other</option>
                   </select>
                 </div>
 
@@ -136,9 +177,10 @@ export default function CampaignCommandDeck() {
 
                 <button 
                   type="submit"
-                  className="w-full bg-rose-600 hover:bg-rose-500 text-white py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider font-mono transition shadow-lg shadow-rose-900/40 mt-2"
+                  disabled={loading}
+                  className="w-full bg-rose-600 hover:bg-rose-500 text-white py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider font-mono transition shadow-lg shadow-rose-900/40 mt-2 disabled:opacity-50"
                 >
-                  Transmit Proof for Review 🔒
+                  {loading ? "Transmitting to Backend..." : "Transmit Proof for Review 🔒"}
                 </button>
               </form>
             )}
@@ -146,7 +188,6 @@ export default function CampaignCommandDeck() {
 
         </div>
 
-        {/* RIGHT PANEL: Live Tactical Leaderboard (5 Cols) */}
         <div className="lg:col-span-5 space-y-6">
           <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-3xl p-6 backdrop-blur-xl shadow-2xl h-full flex flex-col">
             

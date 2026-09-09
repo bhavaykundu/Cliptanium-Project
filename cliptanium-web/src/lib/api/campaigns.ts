@@ -1,43 +1,27 @@
+// src/lib/api/campaigns.ts
 import { fetchAPI } from './client';
+import { Campaign } from './types';
 
-// Hardcoded test user and campaign constants if needed
-const TEST_CAMPAIGN_ID = "662b74fd-a6f8-4a0c-bcdc-d0758e2a40f0"; // Update if your project uses dynamic ID
+// ✅ Fake getUserId() function hamesha ke liye HATA diya gaya hai!
 
-function getUserId() {
-  return "662b74fd-a6f8-4a0c-bcdc-d0758e2a40f0";
+export async function getCampaigns(): Promise<Campaign[]> {
+  return fetchAPI<Campaign[]>('/campaigns', {
+    method: 'GET',
+  });
 }
 
-// 1. Get Campaigns function jo missing thi
-export async function getCampaigns() {
+export async function joinCampaign(campaignId: string) {
   try {
-    const response = await fetchAPI('/campaigns', {
-      method: 'GET',
-    });
-    return response;
-  } catch (error) {
-    console.error("Failed to fetch campaigns", error);
-    return [];
-  }
-}
-
-// 2. Join Campaign function (409 conflict bypass ke sath)
-export async function joinCampaign(campaignId: string = TEST_CAMPAIGN_ID) {
-  const userId = getUserId();
-  
-  try {
-    const response = await fetchAPI(`/campaigns/${campaignId}/join`, {
+    return await fetchAPI<any>(`/campaigns/${campaignId}/join`, {
       method: 'POST',
-      body: JSON.stringify({
-        user_id: userId,
-      }),
+      // ✅ Dev 3 ke contract ke hisaab se body empty hai. 
+      // User identity ab seedha token se jayegi (jo fetchAPI handle karega).
+      body: JSON.stringify({}), 
     });
-    return response;
   } catch (error: any) {
-    // Agar user pehle se joined hai (409), toh error throw nahi karenge
-    if (error.message?.includes('409') || error.message?.toLowerCase().includes('already')) {
+    if (error.status === 409 || error.message?.toLowerCase().includes('already')) {
       return { status: 'success', message: 'Already joined', alreadyJoined: true };
     }
-    
-    throw error;
+    throw error; // Agar 401 Unauthorized aata hai, toh wo yahan se aage jayega
   }
 }

@@ -15,12 +15,22 @@ export default function SubmissionsPage() {
   const [platform, setPlatform] = useState('TikTok');
   const [submitting, setSubmitting] = useState(false);
 
+  // Helper function to safely extract array from backend response
+  const extractArray = (res: any) => {
+    if (Array.isArray(res)) return res;
+    if (res && Array.isArray(res.submissions)) return res.submissions;
+    if (res && Array.isArray(res.data)) return res.data;
+    if (res && Array.isArray(res.results)) return res.results;
+    return [];
+  };
+
   // Fetch submissions from backend on load
   useEffect(() => {
     async function loadSubmissions() {
       try {
         setLoading(true);
-        const data = await getSubmissions();
+        const rawData = await getSubmissions();
+        const data = extractArray(rawData);
         setSubmissions(data);
       } catch (err: any) {
         setError(err.message || 'Failed to load submissions');
@@ -46,8 +56,9 @@ export default function SubmissionsPage() {
       setClipUrl('');
       setCampaignId('');
       
-      // Refresh submissions list
-      const updated = await getSubmissions();
+      // Refresh submissions list safely
+      const rawData = await getSubmissions();
+      const updated = extractArray(rawData);
       setSubmissions(updated);
     } catch (err: any) {
       alert(err.message || "Failed to submit clip");
@@ -112,9 +123,9 @@ export default function SubmissionsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800 text-sm">
-                {submissions.map((sub) => {
+                {submissions.map((sub, index) => {
                   const status = (sub.status || 'Pending').toLowerCase();
-                  const subId = sub.id || sub._id || 'SUB-ID';
+                  const subId = sub.id || sub._id || `SUB-${index}`;
                   const campaignName = sub.campaignTitle || sub.campaign || 'Cliptanium Campaign';
                   const clipUrl = sub.clipUrl || sub.url || '#';
                   const subDate = sub.submittedAt ? new Date(sub.submittedAt).toLocaleDateString() : (sub.date || 'Today');
@@ -238,7 +249,7 @@ export default function SubmissionsPage() {
               <button 
                 type="submit" 
                 disabled={submitting}
-                className="w-full mt-4 bg-white hover:bg-zinc-200 text-black text-xs px-6 py-3.5 rounded-xl font-black tracking-wider transition-all duration-300 active:scale-95 uppercase disabled:opacity-50 font-black"
+                className="w-full mt-4 bg-white hover:bg-zinc-200 text-black text-xs px-6 py-3.5 rounded-xl font-black tracking-wider transition-all duration-300 active:scale-95 uppercase disabled:opacity-50"
               >
                 {submitting ? 'Submitting to Backend...' : 'Submit to Review Queue'}
               </button>

@@ -1,25 +1,24 @@
+// src/lib/api/accounts.ts
 import { fetchAPI } from './client';
 
-const DISCORD_USER_ID = '1188523968920035458';
-// Yahan UUID update kar diya hai (bcdc wala)
-const VERIFIED_BACKEND_UUID = '662b74fd-a6f8-4a0c-bcdc-d0758e2a40f0';
-
-const getUserId = () => {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem('cliptanium_user_id') || VERIFIED_BACKEND_UUID;
-  }
-  return VERIFIED_BACKEND_UUID;
-};
+// TypeScript ko batane ke liye ki response kaisa dikhega
+interface UserMeResponse {
+  accounts?: any[];
+  [key: string]: any;
+}
 
 export async function getLinkedAccounts() {
-  const userId = getUserId();
   try {
-    const response = await fetchAPI(`/users/${userId}`);
+    // Yahan humne <UserMeResponse> pass kar diya
+    const response = await fetchAPI<UserMeResponse>('/users/me');
     
     if (Array.isArray(response)) return response;
+    // Ab TypeScript yahan error nahi dega
     if (response?.accounts) return response.accounts;
+    
     return response ? [response] : [];
   } catch (err) {
+    console.error("Failed to fetch linked accounts:", err);
     return [];
   }
 }
@@ -29,14 +28,12 @@ export async function linkAccount(data: {
   username: string;
   analyticsDriveUrl: string;
 }) {
-  const userId = getUserId();
-  
   return fetchAPI('/users/accounts', {
     method: 'POST',
     body: JSON.stringify({
-      user_id: userId,
-      discord_id: DISCORD_USER_ID,
-      ...data,
+      platform: data.platform.toLowerCase().trim().replace(/\s+/g, '_'),
+      username: data.username,
+      analytics_drive_url: data.analyticsDriveUrl,
     }),
   });
 }

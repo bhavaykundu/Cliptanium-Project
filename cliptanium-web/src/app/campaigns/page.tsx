@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation'; // <-- 1. Router import kiya
 import { getCampaigns, joinCampaign } from '@/lib/api/campaigns';
 
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  const router = useRouter(); // <-- 2. Router initialize kiya
 
   // Fetch campaigns from backend on load
   useEffect(() => {
@@ -27,11 +30,12 @@ export default function CampaignsPage() {
   // Handle Joining Campaign
   const handleJoinCampaign = async (campaignId: string) => {
     try {
+      // Backend api call
       await joinCampaign(campaignId);
-      alert("Successfully joined campaign! Discord access will be applied.");
-      // Refresh list
-      const updatedData = await getCampaigns();
-      setCampaigns(updatedData);
+      
+      // 3. Jaise hi join success ho, seedha user ko nayi manzil par bhej do!
+      router.push(`/campaigns/${campaignId}/submit`);
+      
     } catch (err: any) {
       alert(err.message || "Failed to join campaign");
     }

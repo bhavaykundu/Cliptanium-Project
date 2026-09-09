@@ -1,32 +1,87 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://bodies-timber-floor-secondary.trycloudflare.com/api/v1';
+// src/lib/api/client.ts
+import { ApiErrorResponse } from './types';
 
-export async function fetchAPI(endpoint: string, options: RequestInit = {}) {
-  // Ensure no double slashes and proper URL construction
-  const cleanBase = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
-  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+// Slashes ko safely handle karne ke liye replace lagaya hai
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "");
+
+if (!API_BASE_URL) {
+  console.error("CRITICAL ERROR: NEXT_PUBLIC_API_BASE_URL is missing in environment variables.");
+}
+
+// Centralized Custom Error Class (Kept from your original code)
+export class ApiError extends Error {
+  status: number;
+  data: ApiErrorResponse | null;
   
-  // If base already contains /api/v1 and endpoint doesn't duplicate it
-  const url = `${cleanBase}${cleanEndpoint}`;
+  constructor(status: number, message: string, data?: ApiErrorResponse) {
+    super(message);
+    this.status = status;
+    this.data = data || null;
+    this.name = 'ApiError';
+  }
+}
+
+// NextAuth ke token ko accept karne ke liye Custom Interface
+interface FetchOptions extends RequestInit {
+  token?: string; 
+}
+
+// Typed Fetch Wrapper (Kept Generic <T> from your original code)
+export async function fetchAPI<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
+  // 1. Construct URL securely (Endpoint ke start mein slash check)
+  const url = `${API_BASE_URL}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+  
+  // 2. Set default headers
+  const headers = new Headers(options.headers);
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  // --- DEV 3 REQUIREMENT: Ngrok Bypass Header ---
+  headers.set('ngrok-skip-browser-warning', 'true');
+  // ----------------------------------------------
+
+  // 3. Token Logic: Use passed token (from NextAuth later) OR fallback to Dev 3 temporary token
+  const token = options.token || process.env.NEXT_PUBLIC_DEV_BEARER_TOKEN;
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const config: RequestInit = {
+    ...options,
+    headers,
+  };
 
   try {
-    const res = await fetch(url, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-      ...options,
-    });
-
-    if (!res.ok) {
-      const errorBody = await res.text().catch(() => '');
-      throw new Error(`API Error: ${res.status} - ${errorBody || res.statusText}`);
+    // 4. Execute Request
+    const response = await fetch(url, config);
+    
+    // Handle 204 No Content gracefully
+    if (response.status === 204) {
+      return {} as T;
     }
 
-    // Handle empty responses gracefully
-    const text = await res.text();
-    return text ? JSON.parse(text) : null;
-  } catch (error: any) {
-    console.error(`Fetch error for URL (${url}):`, error.message);
-    throw error;
+    // 5. Parse Response
+    const data = await response.json().catch(() => null);
+
+    // 6. Handle HTTP Errors strictly
+    if (!response.ok) {
+      throw new ApiError(
+        response.status,
+        data?.detail || data?.message || `Backend returned ${response.status}: ${response.statusText}`,
+        data
+      );
+    }
+
+    // 7. Return typed data
+    return data as T;
+    
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error; // Pass through our custom API errors
+    }
+    // Catch fetch/network failures (e.g., tunnel down, CORS issues)
+    console.error(`[Network Error] Failed to fetch ${endpoint}:`, error);
+    throw new Error("Network error: Unable to connect to the backend API.");
   }
 }
